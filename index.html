@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>台北捷運大冒險：三鶯線美食景點小站長（聽損友善與捷運動畫版）</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @keyframes train-move {
+      0% { transform: translateX(-8px); }
+      50% { transform: translateX(8px); }
+      100% { transform: translateX(-8px); }
+    }
+    @keyframes train-speed {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(120%); }
+    }
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7); }
+      50% { box-shadow: 0 0 0 8px rgba(56, 189, 248, 0); }
+    }
+    .animate-train {
+      animation: train-move 2.5s infinite ease-in-out;
+    }
+    .animate-train-fast {
+      animation: train-speed 1.6s infinite linear;
+    }
+    .pulse-station {
+      animation: pulse-glow 1.5s infinite;
+    }
+    #confettiCanvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 999;
+    }
+    /* 隱藏滾動條但保持可滾動 */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="bg-sky-50 text-slate-800 antialiased min-h-screen flex flex-col items-center justify-start p-2 sm:p-5 select-none font-sans">
+
+  <canvas id="confettiCanvas"></canvas>
+
+  <!-- 遊戲主容器 -->
+  <div class="w-full max-w-xl bg-white border-4 border-sky-300 rounded-3xl shadow-2xl overflow-hidden flex flex-col my-auto relative">
+    
+    <!-- 頂部捷運資訊條 -->
+    <header class="bg-gradient-to-r from-blue-600 via-sky-600 to-teal-500 text-white p-3.5 sm:p-4">
+      <div class="flex items-center justify-between mb-1.5">
+        <div class="flex items-center space-x-2">
+          <span class="text-3xl animate-train">🚇</span>
+          <div>
+            <div class="flex items-center space-x-1.5">
+              <h1 class="font-black text-lg sm:text-xl tracking-wide drop-shadow-sm">台北捷運大冒險</h1>
+              <span class="bg-amber-300 text-blue-900 text-[10px] sm:text-xs font-black px-2 py-0.5 rounded-full animate-pulse shadow-sm">
+                🩵 三鶯線登場！
+              </span>
+            </div>
+            <p class="text-[11px] text-sky-100 font-bold">視覺大字提示 • 聽損友善 • 捷運地圖導航</p>
+          </div>
+        </div>
+        
+        <div class="flex items-center space-x-2">
+          <button id="voiceBtn" onclick="toggleVoice()" class="bg-white/20 hover:bg-white/30 active:scale-95 text-white px-2.5 py-1 rounded-full text-xs font-bold backdrop-blur-sm border border-white/30 flex items-center space-x-1 shadow">
+            <span id="voiceIcon">🔊</span>
+            <span id="voiceText">語音</span>
+          </button>
+          <span id="stationBadge" class="bg-white text-blue-700 font-black px-2.5 py-1 rounded-full text-xs shadow">
+            第 1 / 10 站
+          </span>
+        </div>
+      </div>
+      
+      <!-- 悠遊卡儲值進度條 -->
+      <div class="space-y-1 mt-2">
+        <div class="flex justify-between items-center text-xs font-black text-white">
+          <span class="flex items-center space-x-1.5">
+            <span>💳 悠遊卡儲值：</span>
+            <span id="cardBalance" class="text-base text-yellow-300 font-black">0</span>
+            <span class="text-sky-100">/ 100 元滿分</span>
+          </span>
+          <span class="bg-blue-800/60 px-2 py-0.5 rounded-full text-[10px] font-bold">每站加值 +10 元</span>
+        </div>
+        <div class="w-full bg-black/25 rounded-full h-3.5 p-0.5 border border-white/30 shadow-inner">
+          <div id="balanceBar" class="bg-gradient-to-r from-yellow-300 via-amber-300 to-emerald-400 h-full rounded-full transition-all duration-700 ease-out" style="width: 0%"></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 捷運即時軌道地圖（讓玩家永遠知道自己坐到哪一站！） -->
+    <nav class="bg-slate-100 border-b-2 border-slate-200 px-3 py-2">
+      <div class="flex items-center justify-between text-[11px] font-bold text-slate-500 mb-1">
+        <span class="flex items-center space-x-1">
+          <span>🗺️ 捷運即時路線圖：</span>
+          <span class="text-blue-600 font-black" id="mapCurrentStationText">目前在：1. 陶瓷老街站</span>
+        </span>
+        <span class="text-xs text-sky-700">（滑動看全部 10 站 ➡️）</span>
+      </div>
+      <!-- 站點軌道列 (橫向滑動) -->
+      <div class="overflow-x-auto no-scrollbar py-1">
+        <div id="metroMapTrack" class="flex items-center space-x-1.5 min-w-max px-1">
+          <!-- 由 JS 生成 10 站軌道標記 -->
+        </div>
+      </div>
+    </nav>
+
+    <!-- 遊戲主要內容區 -->
+    <main id="mainPanel" class="p-3 sm:p-5 flex-1 flex flex-col justify-between relative">
+      
+      <!-- 1. 開始畫面 -->
+      <div id="introScreen" class="text-center py-3 space-y-3.5">
+        <div class="inline-block p-3 bg-sky-100 rounded-full border-4 border-sky-300 animate-train shadow-md">
+          <span class="text-6xl sm:text-7xl">🚇🥐🍣</span>
+        </div>
+        
+        <div class="space-y-1">
+          <h2 class="text-2xl sm:text-3xl font-black text-slate-800">
+            捷運景點美食大挑戰！
+          </h2>
+          <p class="text-slate-600 text-sm sm:text-base font-bold leading-relaxed max-w-sm mx-auto">
+            你最喜歡的台北捷運發車囉！<br>
+            沿途認識<span class="text-sky-600 font-black">三鶯線與台北捷運</span>的美食與景點。<br>
+            看大字題目做選擇，悠遊卡加滿 <span class="text-orange-600 text-lg font-black">100 元</span> 當站長！
+          </p>
+        </div>
+
+        <!-- 路線亮點卡片 -->
+        <div class="bg-gradient-to-r from-sky-50 to-blue-50 border-2 border-sky-200 rounded-2xl p-3 text-left max-w-md mx-auto space-y-2 text-xs font-bold">
+          <div class="font-black text-blue-900 flex items-center space-x-1.5">
+            <span>🚏</span>
+            <span>本次發車探索站點：</span>
+          </div>
+          <div class="grid grid-cols-2 gap-1.5">
+            <div class="bg-white p-2 rounded-xl border border-sky-200 text-sky-900">
+              <span class="block text-sky-600 font-black">🩵 三鶯線 3 大站</span>
+              <span>陶瓷老街 • 台北大學 • 陶博館</span>
+            </div>
+            <div class="bg-white p-2 rounded-xl border border-blue-200 text-blue-900">
+              <span class="block text-blue-600 font-black">💙 藍線大轉乘</span>
+              <span>頂埔站轉乘 • 西門町阿宗麵線</span>
+            </div>
+            <div class="bg-white p-2 rounded-xl border border-red-200 text-red-900">
+              <span class="block text-red-600 font-black">❤️ 紅線人氣站</span>
+              <span>台北101小籠包 • 淡水老街阿給</span>
+            </div>
+            <div class="bg-white p-2 rounded-xl border border-amber-200 text-amber-900">
+              <span class="block text-amber-600 font-black">🤎 棕線與綠線</span>
+              <span>動物園看熊貓 • 饒河夜市胡椒餅</span>
+            </div>
+          </div>
+        </div>
+
+        <button onclick="startGame()" class="w-full sm:w-auto px-10 py-3.5 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white font-black text-xl rounded-2xl shadow-xl transform active:scale-95 transition-all flex items-center justify-center mx-auto space-x-2">
+          <span>🎫</span>
+          <span>逼逼刷卡！開車出發！</span>
+          <span>✨</span>
+        </button>
+      </div>
+
+      <!-- 2. 關卡答題畫面 -->
+      <div id="playScreen" class="hidden flex-col space-y-3.5">
+        
+        <!-- 【專為聽損設計的大字提問看板框】 -->
+        <div class="w-full bg-gradient-to-r from-sky-100 via-blue-50 to-indigo-100 border-3 border-sky-400 rounded-2xl p-2.5 sm:p-3 text-center shadow-md">
+          <div class="flex items-center justify-between mb-0.5">
+            <span class="text-[11px] font-black text-sky-800 bg-white px-2 py-0.5 rounded-full border border-sky-300">
+              📢 捷運站長提問
+            </span>
+            <div class="flex items-center space-x-1">
+              <span id="lineTag" class="text-[11px] text-white font-black px-2 py-0.5 rounded-full shadow-sm bg-sky-500">
+                🩵 三鶯線
+              </span>
+              <span id="stationCode" class="text-[11px] bg-white text-slate-700 border border-slate-300 font-black px-1.5 py-0.5 rounded-full">
+                LB08
+              </span>
+            </div>
+          </div>
+          <!-- 醒目核心問題：例如【某某捷運站有什麼？】 -->
+          <h2 id="mainQuestionTitle" class="text-lg sm:text-xl font-black text-blue-950 tracking-wide mt-1 leading-snug">
+            【陶瓷老街站有什麼好吃的和好玩的？】
+          </h2>
+        </div>
+
+        <!-- 捷運站點展示舞台（大圖示＋站名，無多餘小字句子干擾） -->
+        <div class="bg-slate-50 border-3 border-sky-200 rounded-3xl p-3 sm:p-4 relative shadow-sm flex flex-col items-center">
+          <div id="metroVisualBox" class="w-full py-3 bg-white rounded-2xl border-2 border-dashed border-sky-200 flex flex-col items-center justify-center min-h-[150px] max-h-[190px] shadow-inner relative overflow-hidden">
+            <div id="metroEmoji" class="text-6xl sm:text-7xl select-none transition-transform duration-300 transform hover:scale-105 animate-train">
+              🍣 🏺
+            </div>
+            <!-- 捷運站名大標籤看板 -->
+            <div class="mt-2 bg-slate-800 text-white font-black text-sm sm:text-base px-4 py-1 rounded-full shadow flex items-center space-x-2">
+              <span id="metroStationName">陶瓷老街站</span>
+              <span class="text-xs text-sky-300 font-normal">Station</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 選項按鈕區（大字體、純粹句子選項） -->
+        <div id="optionsContainer" class="space-y-2.5">
+          <!-- 由 JS 動態生成選項 -->
+        </div>
+
+        <!-- 答對/答錯回饋卡片 -->
+        <div id="feedbackCard" class="hidden rounded-3xl p-4 sm:p-5 border-4 transition-all duration-300 shadow-xl">
+          <div class="flex items-start space-x-3">
+            <span id="feedbackEmoji" class="text-4xl sm:text-5xl flex-shrink-0">🎉</span>
+            <div class="space-y-1.5 flex-1">
+              <div class="flex items-center justify-between">
+                <h4 id="feedbackTitle" class="text-lg sm:text-xl font-black"></h4>
+                <button onclick="speakFeedback()" class="px-2 py-1 bg-white/80 rounded-xl text-xs font-bold text-slate-700 shadow-sm flex items-center space-x-1">
+                  <span>🔊</span><span>聽語音</span>
+                </button>
+              </div>
+              <p id="feedbackDetail" class="text-base sm:text-lg font-bold leading-relaxed"></p>
+
+              <!-- 捷運景點小筆記（大字清晰） -->
+              <div class="bg-white/95 p-2.5 rounded-2xl border border-slate-200 mt-2 text-xs sm:text-sm font-bold text-slate-700 space-y-0.5">
+                <div class="text-sky-700 font-black flex items-center space-x-1">
+                  <span>💡</span><span>捷運站長小筆記：</span>
+                </div>
+                <div id="knowledgeNote" class="text-slate-800 leading-normal"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-2 border-t border-black/10 flex justify-end">
+            <button id="nextBtn" class="w-full sm:w-auto px-8 py-3 text-white font-black text-base rounded-2xl shadow-lg active:scale-95 transition flex items-center justify-center space-x-2">
+              <span>搭捷運前往下一站</span>
+              <span>🚇</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 3. 【搭捷運前往下一站】列車行駛動畫過場（Transit Animation） -->
+      <div id="transitScreen" class="hidden absolute inset-0 bg-sky-900/95 backdrop-blur-md rounded-3xl z-50 flex-col items-center justify-center p-6 text-center text-white space-y-5">
+        <div class="space-y-1">
+          <span class="text-xs bg-sky-700 text-sky-200 font-black px-3 py-1 rounded-full uppercase tracking-wider">
+            TAIPEI METRO TRANSIT
+          </span>
+          <h3 class="text-2xl sm:text-3xl font-black text-yellow-300 mt-2">
+            🚇 列車出發！前往下一站！
+          </h3>
+        </div>
+
+        <!-- 捷運列車滑動動畫舞台 -->
+        <div class="w-full max-w-sm h-28 bg-slate-800/80 rounded-2xl border-2 border-sky-400 relative overflow-hidden flex items-center">
+          <!-- 鐵軌 -->
+          <div class="absolute bottom-4 left-0 right-0 h-1.5 bg-slate-500">
+            <div class="w-full h-full border-t border-dashed border-white/50"></div>
+          </div>
+          <!-- 滑動的捷運列車 -->
+          <div class="text-5xl absolute animate-train-fast">
+            🚇💨💨
+          </div>
+        </div>
+
+        <!-- 車內跑馬燈文字提示（專門給聽損玩家觀看） -->
+        <div class="bg-black/50 border-2 border-amber-400/80 rounded-xl px-4 py-2 text-amber-300 font-mono font-black text-base sm:text-lg animate-pulse max-w-sm">
+          ▶ 嗶嗶嗶！車門關閉！下一站：<span id="transitNextName" class="text-white underline">台北大學站</span>
+        </div>
+
+        <button onclick="skipTransit()" class="text-xs text-sky-300 underline font-bold hover:text-white pt-2">
+          點擊直接進站 ⏩
+        </button>
+      </div>
+
+      <!-- 4. 滿分結算與站長證書畫面 -->
+      <div id="finalScreen" class="hidden text-center py-3 space-y-4">
+        <div class="inline-block p-4 bg-amber-100 border-4 border-amber-300 rounded-full animate-bounce">
+          <span class="text-6xl sm:text-7xl">🧑‍✈️🏆</span>
+        </div>
+
+        <div class="space-y-1">
+          <h2 class="text-2xl sm:text-3xl font-black text-slate-800">
+            太厲害了！你獲得了 100 分！
+          </h2>
+          <p class="text-slate-700 font-bold text-base sm:text-lg">
+            悠遊卡加值滿 100 元！你是最優秀的台北捷運小站長！
+          </p>
+        </div>
+
+        <!-- 獎狀與探索成績單卡片（直接公布紀錄與成績，免填姓名） -->
+        <div class="bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 border-4 border-dashed border-sky-400 rounded-3xl p-4 sm:p-5 max-w-md mx-auto shadow-md text-left space-y-3">
+          <div class="text-center pb-2 border-b-2 border-sky-200">
+            <span class="text-xs font-bold text-sky-800 tracking-wider">TAIPEI METRO MASTER CERTIFICATE</span>
+            <h3 class="text-xl sm:text-2xl font-black text-blue-950 mt-0.5">🌟 台北捷運特優小站長 榮譽證書</h3>
+          </div>
+
+          <!-- 榮譽頒獎橫條 -->
+          <div class="bg-sky-100/90 p-2.5 rounded-2xl border border-sky-300 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="text-2xl">🎖️</span>
+              <div>
+                <span class="text-[11px] text-sky-800 font-bold block">正式榮譽授予</span>
+                <span class="text-sm sm:text-base font-black text-blue-950">捷運美食景點達人 • 滿分合格</span>
+              </div>
+            </div>
+            <button onclick="speakCertificate()" class="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-black shadow-sm flex items-center space-x-1 active:scale-95 transition" title="聽頒獎詞">
+              <span>🔊</span><span>聽頒獎</span>
+            </button>
+          </div>
+
+          <!-- 10 站作答探索清單 -->
+          <div class="bg-white p-3 rounded-2xl border border-sky-200 text-xs sm:text-sm space-y-2 text-slate-700 font-bold">
+            <div class="flex justify-between items-center text-xs text-slate-500 pb-1.5 border-b border-slate-100">
+              <span class="font-black text-slate-700">📋 10 站景點美食探索紀錄</span>
+              <span class="text-emerald-700 font-black">全部通過 (10/10)</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-600 font-medium">
+              <div>✅ 1. 陶瓷老街站 (阿婆壽司)</div>
+              <div>✅ 2. 台北大學站 (三峽金牛角)</div>
+              <div>✅ 3. 陶瓷博物館站 (手拉胚)</div>
+              <div>✅ 4. 頂埔站 (三鶯線起點)</div>
+              <div>✅ 5. 台北101站 (小籠包)</div>
+              <div>✅ 6. 淡水站 (阿給與鐵蛋)</div>
+              <div>✅ 7. 西門站 (阿宗麵線)</div>
+              <div>✅ 8. 動物園站 (大貓熊)</div>
+              <div>✅ 9. 士林站 (士林夜市大雞排)</div>
+              <div>✅ 10. 松山站 (饒河街胡椒餅)</div>
+            </div>
+
+            <div class="flex justify-between items-center pt-2 border-t border-slate-200 text-sky-700 font-black text-base">
+              <span class="flex items-center space-x-1">
+                <span>💳</span>
+                <span>悠遊卡加值總額</span>
+              </span>
+              <span class="text-xl text-emerald-700">100 元 (滿分特優！)</span>
+            </div>
+          </div>
+
+          <div class="pt-2 border-t-2 border-sky-200 flex justify-between items-center text-xs font-black text-sky-800">
+            <span>台北捷運公司 • 三鶯線小站長認證小組</span>
+            <span class="text-lg">💮 合格認證</span>
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row justify-center gap-3 pt-1">
+          <button onclick="window.print()" class="px-6 py-3 bg-slate-800 hover:bg-slate-900 text-white font-black rounded-2xl shadow transition flex items-center justify-center space-x-2">
+            <span>🖨️</span>
+            <span>列印站長證書</span>
+          </button>
+          <button onclick="restartGame()" class="px-6 py-3 bg-sky-600 hover:bg-sky-700 text-white font-black rounded-2xl shadow transition flex items-center justify-center space-x-2">
+            <span>🔄</span>
+            <span>再搭一次捷運！</span>
+          </button>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- 底部資訊 -->
+    <footer class="bg-slate-50 border-t border-slate-200 px-4 py-2 text-center text-xs text-slate-400 font-medium">
+      台北捷運與三鶯線互動探索 • 聽損大字提示導引 • 捷運軌道圖與列車動畫
+    </footer>
+
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. 語音系統模組 (Web Speech API)
+    // ==========================================
+    let isVoiceOn = true;
+    let lastVoiceText = "";
+
+    function toggleVoice() {
+      isVoiceOn = !isVoiceOn;
+      document.getElementById('voiceIcon').textContent = isVoiceOn ? '🔊' : '🔇';
+      document.getElementById('voiceText').textContent = isVoiceOn ? '語音' : '靜音';
+      if (!isVoiceOn && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    }
+
+    function speak(text, pitch = 1.15, rate = 0.95) {
+      if (!isVoiceOn) return;
+      if (!('speechSynthesis' in window)) return;
+
+      window.speechSynthesis.cancel();
+      lastVoiceText = text;
+
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'zh-TW';
+      utter.pitch = pitch;
+      utter.rate = rate;
+
+      const voices = window.speechSynthesis.getVoices();
+      const tw = voices.find(v => v.lang.includes('zh-TW') || v.lang.includes('TW'));
+      if (tw) utter.voice = tw;
+
+      window.speechSynthesis.speak(utter);
+    }
+
+    // ==========================================
+    // 2. 音效系統 (Web Audio API)
+    // ==========================================
+    let audioCtx = null;
+    function getAudioCtx() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      return audioCtx;
+    }
+
+    // 逼逼！悠遊卡逼卡聲
+    function playBeepCard() {
+      try {
+        const ctx = getAudioCtx();
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.frequency.setValueAtTime(1200, ctx.currentTime);
+        gain1.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.start();
+        osc1.stop(ctx.currentTime + 0.08);
+
+        setTimeout(() => {
+          const osc2 = ctx.createOscillator();
+          const gain2 = ctx.createGain();
+          osc2.frequency.setValueAtTime(1400, ctx.currentTime);
+          gain2.gain.setValueAtTime(0.25, ctx.currentTime);
+          gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+          osc2.connect(gain2);
+          gain2.connect(ctx.destination);
+          osc2.start();
+          osc2.stop(ctx.currentTime + 0.12);
+        }, 90);
+      } catch (e) {}
+    }
+
+    // 捷運進站音樂
+    function playMetroMelody() {
+      const melody = [523.25, 659.25, 783.99, 1046.50];
+      melody.forEach((f, idx) => {
+        setTimeout(() => {
+          try {
+            const ctx = getAudioCtx();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(f, ctx.currentTime);
+            gain.gain.setValueAtTime(0.18, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.25);
+          } catch(e){}
+        }, idx * 120);
+      });
+    }
+
+    function playWrongSound() {
+      try {
+        const ctx = getAudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.frequency.setValueAtTime(300, ctx.currentTime);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.25);
+      } catch (e) {}
+    }
+
+    // ==========================================
+    // 3. 彩帶紙花
+    // ==========================================
+    const canvas = document.getElementById('confettiCanvas');
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function shootConfetti() {
+      particles = [];
+      const colors = ['#0284c7', '#38bdf8', '#fbbf24', '#f43f5e', '#10b981', '#a855f7'];
+      for (let i = 0; i < 75; i++) {
+        particles.push({
+          x: window.innerWidth / 2,
+          y: window.innerHeight / 2 - 40,
+          vx: (Math.random() - 0.5) * 14,
+          vy: (Math.random() - 0.8) * 15,
+          size: Math.random() * 8 + 6,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          rotation: Math.random() * 360,
+          vRot: (Math.random() - 0.5) * 12,
+          opacity: 1
+        });
+      }
+      animateConfetti();
+    }
+
+    function animateConfetti() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let alive = false;
+      particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.35;
+        p.rotation += p.vRot;
+        p.opacity -= 0.014;
+
+        if (p.opacity > 0) {
+          alive = true;
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate((p.rotation * Math.PI) / 180);
+          ctx.fillStyle = p.color;
+          ctx.globalAlpha = Math.max(0, p.opacity);
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+          ctx.restore();
+        }
+      });
+      if (alive) requestAnimationFrame(animateConfetti);
+      else ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // ==========================================
+    // 4. 捷運與三鶯線 10 大站點資料庫
+    // ==========================================
+    const METRO_STATIONS = [
+      {
+        id: 1,
+        line: "🩵 三鶯線",
+        lineColor: "bg-sky-500",
+        code: "LB08",
+        stationName: "陶瓷老街站",
+        shortName: "陶瓷老街",
+        questionPrompt: "【陶瓷老街站有什麼好吃的和好玩的？】",
+        emoji: "🍣 🏺 🍵",
+        speechIntro: "第一站！搭乘新開通的三鶯線，來到陶瓷老街站，這裡有什麼最受歡迎的美食呢？",
+        options: [
+          { text: "好吃的鶯歌阿婆壽司與手拉胚陶器。", isCorrect: true, praise: "答對了！加值 10 元！陶瓷老街站有超有名的阿婆壽司，還可以體驗手拉胚捏陶土做杯子喔！", note: "陶瓷老街漫步，吃料多味美的阿婆壽司與味噌湯，再逛老街買可愛陶瓷小盤子！" },
+          { text: "深海大龍蝦配披薩大餐。", isCorrect: false, tip: "鶯歌最有名的是清爽好吃的阿婆壽司，不是大龍蝦喔！再選一次！" },
+          { text: "草莓巧克力鮮奶油蛋糕。", isCorrect: false, tip: "老街以經典台味壽司與陶瓷最知名喔！再仔細看選項！" }
+        ]
+      },
+      {
+        id: 2,
+        line: "🩵 三鶯線",
+        lineColor: "bg-sky-500",
+        code: "LB05",
+        stationName: "台北大學站（三峽）",
+        shortName: "台北大學",
+        questionPrompt: "【台北大學站（三峽老街）有什麼香脆名產？】",
+        emoji: "🥐 🏛️ 🐂",
+        speechIntro: "第二站！搭三鶯線到台北大學站，走路去三峽老街，最香最酥的名產點心是什麼？",
+        options: [
+          { text: "香香脆脆的金牛角麵包與三峽祖師廟。", isCorrect: true, praise: "逼逼！太棒了！三峽老街的金牛角麵包兩端脆脆的超級香，還有美麗壯觀的清水祖師廟！", note: "三峽老街充滿古色古香的紅磚拱橋，剛出爐的金牛角麵包香氣四溢，每個人都要買一袋！" },
+          { text: "大顆的爆米花加可樂。", isCorrect: false, tip: "三峽老街最招牌的名產是兩頭尖尖的金牛角麵包喔！" },
+          { text: "日本拉麵配大生魚片。", isCorrect: false, tip: "想一想，像牛的角一樣彎彎香脆的是什麼麵包呢？再試試看！" }
+        ]
+      },
+      {
+        id: 3,
+        line: "🩵 三鶯線",
+        lineColor: "bg-sky-500",
+        code: "LB09",
+        stationName: "陶瓷博物館站",
+        shortName: "陶瓷博物館",
+        questionPrompt: "【陶瓷博物館站可以參觀什麼文化景點？】",
+        emoji: "🎨 🏺 ⛲",
+        speechIntro: "第三站！三鶯線的陶瓷博物館站，這裡可以參觀什麼有趣的文化景點？",
+        options: [
+          { text: "參觀鶯歌陶瓷博物館，玩陶土捏陶瓷。", isCorrect: true, praise: "超級聰明！加值 10 元！鶯歌陶瓷博物館有好多漂亮的陶藝品，戶外還有陶瓷藝術園區可以探索！", note: "陶瓷博物館是全台灣第一座以陶瓷為主題的博物館，裡面有彩繪體驗和好玩的捏陶課程！" },
+          { text: "看大象和長頸鹿跑步。", isCorrect: false, tip: "看大象要搭文湖線去動物園站喔！這裡是陶瓷博物館！再選一次！" },
+          { text: "去冰雪世界溜冰場滑雪。", isCorrect: false, tip: "這裡是充滿陶藝氣息的博物館喔！再選一次！" }
+        ]
+      },
+      {
+        id: 4,
+        line: "💙 板南線轉乘站",
+        lineColor: "bg-blue-600",
+        code: "BL01 / LB01",
+        stationName: "頂埔站",
+        shortName: "頂埔轉乘",
+        questionPrompt: "【想搭乘三鶯線，要坐板南線到哪一站轉車？】",
+        emoji: "🚇 🔄 🚉",
+        speechIntro: "第四站！想要搭乘三鶯線，我們要搭板南線藍線到哪一個終點站轉車呢？",
+        options: [
+          { text: "搭到板南線終點「頂埔站」轉乘三鶯線。", isCorrect: true, praise: "完全正確！太厲害了！頂埔站是板南線和三鶯線的大轉乘站，從這裡就可以無縫換搭三鶯線列車！", note: "頂埔站是銜接台北市區與三鶯線的重要樞紐，在這裡下車就能直接轉搭高架的三鶯線！" },
+          { text: "搭到台北火車站換飛機。", isCorrect: false, tip: "台北車站不能搭飛機喔，三鶯線的起點是在頂埔站！再試一次！" },
+          { text: "搭到淡水站坐渡輪。", isCorrect: false, tip: "淡水在最北邊，三鶯線是從南邊的頂埔站出發喔！再選一次！" }
+        ]
+      },
+      {
+        id: 5,
+        line: "❤️ 淡水信義線",
+        lineColor: "bg-red-600",
+        code: "R03",
+        stationName: "台北101/世貿站",
+        shortName: "台北101",
+        questionPrompt: "【台北101/世貿站地下街有什麼世界有名的小吃？】",
+        emoji: "🥟 🏙️ 🥢",
+        speechIntro: "第五站！搭紅線來到台北101/世貿站，看高高的大樓，地下街有什麼世界有名的小吃？",
+        options: [
+          { text: "登上101觀景台看風景，吃鼎泰豐小籠包。", isCorrect: true, praise: "逼逼！加值 10 元！台北101是超高地標，地下室的鼎泰豐小籠包皮薄汁多，全世界的遊客都愛吃！", note: "搭乘超高速電梯登上台北101俯瞰整個台北盆地，下樓再吃熱騰騰爆汁的十八摺小籠包！" },
+          { text: "去水上樂園滑水道游泳。", isCorrect: false, tip: "101是摩天大樓，沒有滑水道喔！這裡有美味的小籠包！" },
+          { text: "去菜市場拔高麗菜。", isCorrect: false, tip: "台北101是國際知名的商業大樓，再選選看！" }
+        ]
+      },
+      {
+        id: 6,
+        line: "❤️ 淡水信義線",
+        lineColor: "bg-red-600",
+        code: "R28",
+        stationName: "淡水站",
+        shortName: "淡水老街",
+        questionPrompt: "【淡水站的美麗河岸老街，有什麼招牌傳統小吃？】",
+        emoji: "🌅 🐟 🍘",
+        speechIntro: "第六站！搭紅線一路坐到底來到淡水站，在美麗的河岸老街，有什麼特色美食？",
+        options: [
+          { text: "漫步金色水岸看夕陽，吃淡水阿給與鐵蛋。", isCorrect: true, praise: "答對了！淡水阿給是用油豆腐包冬粉，淋上甜辣醬超級香，還有越嚼越香的黑黑鐵蛋！", note: "淡水站出站就是金色水岸老街，看夕陽吹海風，一定要吃正宗淡水阿給、魚丸湯和鐵蛋！" },
+          { text: "坐在路邊吃大熱狗配爆米花。", isCorrect: false, tip: "淡水最道地的傳統美食是阿給和魚丸湯喔！再選一次！" },
+          { text: "去吃大碗麻辣臭豆腐火鍋。", isCorrect: false, tip: "淡水名產是油豆腐冬粉阿給和鐵蛋，再仔細看一下！" }
+        ]
+      },
+      {
+        id: 7,
+        line: "💙 板南線 / 綠線",
+        lineColor: "bg-blue-600",
+        code: "BL11 / G12",
+        stationName: "西門站",
+        shortName: "西門町",
+        questionPrompt: "【西門站出站逛西門町，哪一家小吃總是大排長龍？】",
+        emoji: "🍜 🏮 🛍️",
+        speechIntro: "第七站！來到年輕人最愛的西門站，出站逛西門町商圈，哪一家麵線總是大排長龍？",
+        options: [
+          { text: "逛西門紅樓古蹟，站著吃熱騰騰的阿宗麵線。", isCorrect: true, praise: "太內行了！加值 10 元！西門町的阿宗麵線柴魚湯頭濃郁、大腸軟嫩，大家端著碗在路邊吃得好開心！", note: "西門站有百年古蹟西門紅樓，步行街熱鬧非凡，阿宗麵線是逛街必備的經典美味！" },
+          { text: "去池塘抓小蝌蚪和青蛙。", isCorrect: false, tip: "西門町是繁華的徒步商圈，沒有青蛙池塘喔！" },
+          { text: "買一大根烤甘蔗咬著吃。", isCorrect: false, tip: "西門町最排隊的是濃郁的阿宗麵線喔！再選一次！" }
+        ]
+      },
+      {
+        id: 8,
+        line: "🤎 文湖線",
+        lineColor: "bg-amber-800",
+        code: "BR01",
+        stationName: "動物園站",
+        shortName: "木柵動物園",
+        questionPrompt: "【動物園站可以看到哪些超人氣的明星動物？】",
+        emoji: "🐼 🐧 🚡",
+        speechIntro: "第八站！搭棕色文湖線到終點動物園站，這裡可以看到哪些超人氣的可愛動物？",
+        options: [
+          { text: "台北市立動物園看大貓熊圓仔與國王企鵝。", isCorrect: true, praise: "逼逼！加值成功！動物園站可以看胖嘟嘟的大貓熊啃竹子，還可以搭貓空纜車上山喝茶！", note: "動物園站是全台灣最受大小朋友喜愛的車站，出站就是台北市立動物園與貓空纜車站！" },
+          { text: "看恐龍在街上走來走去。", isCorrect: false, tip: "現代沒有活生生的恐龍喔！是可愛的大貓熊和企鵝！" },
+          { text: "搭潛水艇看大白鯊抓魚。", isCorrect: false, tip: "動物園在木柵陸地上，不是海底世界喔！再試一次！" }
+        ]
+      },
+      {
+        id: 9,
+        line: "❤️ 淡水信義線",
+        lineColor: "bg-red-600",
+        code: "R16",
+        stationName: "士林站",
+        shortName: "士林夜市",
+        questionPrompt: "【士林站走去台北最大的士林夜市，必吃的美食是？】",
+        emoji: "🍗 🍧 🌃",
+        speechIntro: "第九站！晚上搭到士林站，走路去台北最大最熱鬧的士林夜市，必吃的美食是？",
+        options: [
+          { text: "逛士林夜市，吃比臉還大的大豪大大雞排。", isCorrect: true, praise: "好香喔！加值 10 元！士林夜市有比臉還大的香酥大雞排，還有生煎包、青蛙下蛋珍珠冰！", note: "士林夜市是台北最具規模的觀光夜市，各式台灣經典街頭小吃應有盡有！" },
+          { text: "去買一碗白開水配白飯。", isCorrect: false, tip: "夜市有好多香噴噴的炸雞排和美食小吃，不會只喝白開水啦！" },
+          { text: "去大草原騎馬射箭。", isCorrect: false, tip: "士林夜市是熱鬧的美食街，再仔細挑選最美味的選項！" }
+        ]
+      },
+      {
+        id: 10,
+        line: "💚 松山新店線",
+        lineColor: "bg-emerald-600",
+        code: "G19",
+        stationName: "松山站",
+        shortName: "松山饒河",
+        questionPrompt: "【松山站出站逛饒河街夜市，最香的現烤小吃是什麼？】",
+        emoji: "🍘 🛕 🏮",
+        speechIntro: "最後一站！綠線終點松山站，出站就是金碧輝煌的慈祐宮與饒河街夜市，最香的現烤小吃是？",
+        options: [
+          { text: "參觀松山慈祐宮，排隊吃剛出爐的福州胡椒餅。", isCorrect: true, praise: "大滿貫！最後 10 元入帳！饒河夜市門口的胡椒餅貼在圓圓大炭爐裡面烤，咬一口滿滿肉汁！", note: "松山站銜接台鐵松山車站，出站就是擁有兩百多年歷史的慈祐宮與著名的饒河街觀光夜市！" },
+          { text: "在路邊吃一整顆大檸檬酸到哭。", isCorrect: false, tip: "胡椒餅皮脆肉香，不是酸檸檬喔！再選一次就滿分囉！" },
+          { text: "吃一顆沒煮熟的生馬鈴薯。", isCorrect: false, tip: "熱騰騰出爐的肉餡胡椒餅才是第一名美食！再選一次！" }
+        ]
+      }
+    ];
+
+    // ==========================================
+    // 5. 遊戲主流程控制器
+    // ==========================================
+    let currentStationIdx = 0;
+    let cardBalanceValue = 0;
+    let visitedStations = new Set();
+    let currentFeedbackText = "";
+
+    // 渲染頂部捷運軌道地圖
+    function renderMetroMap() {
+      const track = document.getElementById('metroMapTrack');
+      track.innerHTML = '';
+
+      METRO_STATIONS.forEach((s, i) => {
+        const isCurrent = i === currentStationIdx;
+        const isPassed = visitedStations.has(s.id);
+
+        const node = document.createElement('div');
+        node.className = "flex items-center";
+
+        let badgeBg = "bg-slate-200 text-slate-600 border-slate-300";
+        let statusIcon = `${i + 1}`;
+        if (isCurrent) {
+          badgeBg = "bg-sky-500 text-white border-sky-600 pulse-station scale-105 font-black";
+          statusIcon = "🚇";
+        } else if (isPassed) {
+          badgeBg = "bg-emerald-500 text-white border-emerald-600 font-bold";
+          statusIcon = "✅";
+        }
+
+        node.innerHTML = `
+          <div class="flex flex-col items-center">
+            <span class="w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs shadow-sm transition-all ${badgeBg}">
+              ${statusIcon}
+            </span>
+            <span class="text-[10px] font-black mt-0.5 whitespace-nowrap ${isCurrent ? 'text-sky-700 underline font-extrabold' : 'text-slate-600'}">
+              ${s.shortName}
+            </span>
+          </div>
+          ${i < METRO_STATIONS.length - 1 ? `<div class="w-4 sm:w-6 h-1 mx-0.5 rounded-full ${i < currentStationIdx ? 'bg-emerald-400' : 'bg-slate-300'}"></div>` : ''}
+        `;
+        track.appendChild(node);
+      });
+
+      const cur = METRO_STATIONS[currentStationIdx];
+      document.getElementById('mapCurrentStationText').textContent = `目前在：${currentStationIdx + 1}. ${cur.stationName}`;
+    }
+
+    function startGame() {
+      getAudioCtx();
+      playMetroMelody();
+      document.getElementById('introScreen').classList.add('hidden');
+      document.getElementById('playScreen').classList.remove('hidden');
+      document.getElementById('playScreen').classList.add('flex');
+      loadStation(0);
+    }
+
+    function loadStation(idx) {
+      currentStationIdx = idx;
+      const s = METRO_STATIONS[idx];
+
+      // 更新進度與站點標籤
+      document.getElementById('stationBadge').textContent = `第 ${idx + 1} / ${METRO_STATIONS.length} 站`;
+      
+      const lineTag = document.getElementById('lineTag');
+      lineTag.textContent = s.line;
+      lineTag.className = `text-[11px] text-white font-black px-2 py-0.5 rounded-full shadow-sm ${s.lineColor}`;
+      
+      document.getElementById('stationCode').textContent = s.code;
+      document.getElementById('metroStationName').textContent = s.stationName;
+      document.getElementById('metroEmoji').textContent = s.emoji;
+
+      // 【更新聽損大字問題框】
+      document.getElementById('mainQuestionTitle').textContent = s.questionPrompt;
+
+      // 更新頂部地圖標記
+      renderMetroMap();
+
+      // 隱藏回饋卡與轉場動畫
+      document.getElementById('feedbackCard').classList.add('hidden');
+      document.getElementById('transitScreen').classList.add('hidden');
+      document.getElementById('transitScreen').classList.remove('flex');
+
+      // 語音朗讀
+      speak(s.speechIntro);
+
+      // 動態生成選項按鈕（大字體、純粹句子選項）
+      const container = document.getElementById('optionsContainer');
+      container.innerHTML = '';
+
+      s.options.forEach((opt, optIndex) => {
+        const btn = document.createElement('button');
+        btn.id = `metroOptBtn-${optIndex}`;
+        btn.className = "w-full text-left p-3.5 sm:p-4 rounded-2xl border-3 border-sky-200 bg-white hover:bg-sky-50 active:scale-98 transition shadow-sm flex items-center space-x-3";
+        btn.onclick = () => chooseStationAnswer(opt, optIndex);
+        btn.innerHTML = `
+          <span class="w-8 h-8 rounded-full bg-sky-100 text-sky-800 font-black flex items-center justify-center flex-shrink-0 text-sm border border-sky-300">
+            ${String.fromCharCode(65 + optIndex)}
+          </span>
+          <span class="text-base sm:text-lg font-black text-slate-800 leading-snug flex-1">
+            ${opt.text}
+          </span>
+        `;
+        container.appendChild(btn);
+      });
+    }
+
+    function chooseStationAnswer(opt, optIndex) {
+      getAudioCtx();
+      const s = METRO_STATIONS[currentStationIdx];
+      const card = document.getElementById('feedbackCard');
+      const emoji = document.getElementById('feedbackEmoji');
+      const title = document.getElementById('feedbackTitle');
+      const detail = document.getElementById('feedbackDetail');
+      const note = document.getElementById('knowledgeNote');
+      const nextBtn = document.getElementById('nextBtn');
+
+      note.textContent = s.note;
+
+      if (opt.isCorrect) {
+        // 悠遊卡嗶卡聲＋彩帶特效
+        playBeepCard();
+        shootConfetti();
+
+        card.className = "rounded-3xl p-4 sm:p-5 border-4 border-emerald-400 bg-emerald-50 text-emerald-950 transition-all duration-300 shadow-xl block";
+        emoji.textContent = "💳🌟";
+        title.textContent = "逼逼！感應成功！悠遊卡加值 10 元！";
+        detail.textContent = opt.praise;
+        currentFeedbackText = `${opt.praise} 景點小筆記：${s.note}`;
+
+        // 悠遊卡加值累加
+        if (!visitedStations.has(s.id)) {
+          visitedStations.add(s.id);
+          cardBalanceValue += 10;
+          updateBalanceDisplay();
+          renderMetroMap();
+        }
+
+        nextBtn.className = "w-full sm:w-auto px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base rounded-2xl shadow-lg active:scale-95 transition flex items-center justify-center space-x-2";
+        nextBtn.innerHTML = currentStationIdx === METRO_STATIONS.length - 1 ? 
+          `<span>🎉 抵達終點！領取站長榮譽證書！</span>` : 
+          `<span>搭捷運前往下一站 🚇</span>`;
+        nextBtn.onclick = triggerNextStationTransit;
+
+        // 鎖定選項
+        s.options.forEach((o, i) => {
+          const b = document.getElementById(`metroOptBtn-${i}`);
+          if (b) {
+            b.disabled = true;
+            if (i === optIndex) {
+              b.classList.remove('bg-white');
+              b.classList.add('bg-emerald-100', 'border-emerald-500', 'ring-2', 'ring-emerald-400');
+            } else {
+              b.classList.add('opacity-40');
+            }
+          }
+        });
+
+      } else {
+        playWrongSound();
+
+        card.className = "rounded-3xl p-4 sm:p-5 border-4 border-amber-400 bg-amber-50 text-amber-950 transition-all duration-300 shadow-xl block";
+        emoji.textContent = "🧭";
+        title.textContent = "站長小提醒：再確認一下路線地圖喔！";
+        detail.textContent = opt.tip;
+        currentFeedbackText = opt.tip;
+
+        nextBtn.className = "w-full sm:w-auto px-8 py-3 bg-amber-600 hover:bg-amber-700 text-white font-black text-base rounded-2xl shadow-lg active:scale-95 transition flex items-center justify-center space-x-2";
+        nextBtn.innerHTML = `<span>我想再選一次！🔄</span>`;
+        nextBtn.onclick = () => {
+          card.classList.add('hidden');
+          speak(s.speechIntro);
+        };
+
+        const b = document.getElementById(`metroOptBtn-${optIndex}`);
+        if (b) b.classList.add('border-amber-400', 'bg-amber-100/50');
+      }
+
+      speak(currentFeedbackText);
+      card.classList.remove('hidden');
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // 觸發搭捷運動畫過場
+    let transitTimer = null;
+    function triggerNextStationTransit() {
+      if (currentStationIdx >= METRO_STATIONS.length - 1) {
+        showFinalMaster();
+        return;
+      }
+
+      const nextStation = METRO_STATIONS[currentStationIdx + 1];
+      document.getElementById('transitNextName').textContent = nextStation.stationName;
+
+      const transitScreen = document.getElementById('transitScreen');
+      transitScreen.classList.remove('hidden');
+      transitScreen.classList.add('flex');
+
+      playMetroMelody();
+      speak(`列車即將出發，下一站是：${nextStation.stationName}`);
+
+      // 1.8 秒後自動進入下一站
+      clearTimeout(transitTimer);
+      transitTimer = setTimeout(() => {
+        skipTransit();
+      }, 1900);
+    }
+
+    function skipTransit() {
+      clearTimeout(transitTimer);
+      loadStation(currentStationIdx + 1);
+    }
+
+    function speakFeedback() {
+      if (currentFeedbackText) speak(currentFeedbackText);
+    }
+
+    function updateBalanceDisplay() {
+      document.getElementById('cardBalance').textContent = cardBalanceValue;
+      document.getElementById('balanceBar').style.width = `${cardBalanceValue}%`;
+    }
+
+    function showFinalMaster() {
+      playMetroMelody();
+      shootConfetti();
+      document.getElementById('playScreen').classList.add('hidden');
+      document.getElementById('playScreen').classList.remove('flex');
+      document.getElementById('transitScreen').classList.add('hidden');
+      document.getElementById('transitScreen').classList.remove('flex');
+      document.getElementById('finalScreen').classList.remove('hidden');
+      document.getElementById('stationBadge').textContent = "捷運大通關！💯";
+
+      speak("逼逼！全線通車大成功！十個捷運站景點美食全部答對，悠遊卡加值一百元滿分！正式頒發：台北捷運特優小站長榮譽證書！太厲害了！");
+    }
+
+    function speakCertificate() {
+      speak("正式頒發榮譽獎狀！在台北捷運與新開通三鶯線的美食景點大冒險中，完整探索陶瓷老街、三峽祖師廟、陶博館、台北101與各大夜市，獲得一百分滿分特優！特頒此狀以資鼓勵！");
+    }
+
+    function restartGame() {
+      cardBalanceValue = 0;
+      visitedStations.clear();
+      updateBalanceDisplay();
+      document.getElementById('finalScreen').classList.add('hidden');
+      document.getElementById('introScreen').classList.remove('hidden');
+      currentStationIdx = 0;
+      renderMetroMap();
+      speak("各位旅客請注意，台北捷運列車即將發車，我們再來玩一次吧！");
+    }
+  </script>
+</body>
+</html>
